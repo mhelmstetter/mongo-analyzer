@@ -822,29 +822,62 @@ public class HtmlOutputFormatter implements OutputFormatter {
 
         // Chunk Distribution
         if (!report.getChunkDistribution().isEmpty()) {
+            // Pre-build data imbalance severity lookup
+            Map<String, String> dataImbalanceSeverity = new java.util.HashMap<>();
+            for (ClusterAnalysisReport.DataImbalanceEntry die : report.getDataImbalances()) {
+                dataImbalanceSeverity.put(die.namespace, die.isCritical ? "CRITICAL" : "WARNING");
+            }
+
             writer.println("        <h2>Chunk Distribution</h2>");
             writer.println("        <div class=\"table-container\">");
             writer.println("            <div class=\"controls\"><input type=\"text\" id=\"chunkFilter\" class=\"filter-input\" placeholder=\"Filter...\"><button class=\"clear-btn\" onclick=\"clearFilter('chunkFilter','chunkTable')\">Clear</button></div>");
             writer.println("            <table id=\"chunkTable\">");
             writer.println("                <thead><tr>");
-            for (String h : new String[]{"Namespace","Shard","Zone","Total Chunks","Shard Chunks","% Chunks","Jumbo","Status"}) {
-                writer.println("                    <th class=\"sortable\">" + escapeHtml(h) + "</th>");
+            String[] chunkHeaders = {"Namespace","Shard","Zone","Chunks","% Chunks","Documents","% Docs","Storage","% Storage","Jumbo","Status"};
+            for (int ci = 0; ci < chunkHeaders.length; ci++) {
+                String type = (ci == 0 || ci == 1 || ci == 2 || ci == 9 || ci == 10) ? "string" : "number";
+                writer.println("                    <th class=\"sortable\" onclick=\"sortTable('chunkTable'," + ci + ",'" + type + "')\">" + escapeHtml(chunkHeaders[ci]) + "</th>");
             }
             writer.println("                </tr></thead><tbody>");
+
             for (ChunkDistributionStats cds : report.getChunkDistribution()) {
+                String ns = cds.getNamespace();
+                Map<String, ClusterAnalysisReport.NamespaceShardEntry> nsData =
+                    report.getNamespaceDistribution().get(ns);
+                long totalDocs = nsData != null ? nsData.values().stream().mapToLong(e -> e.documentCount).sum() : 0;
+                long totalStorage = nsData != null ? nsData.values().stream().mapToLong(e -> e.storageSize).sum() : 0;
+                String dataSeverity = dataImbalanceSeverity.get(ns);
+
                 boolean first = true;
                 for (Map.Entry<String, Long> e : cds.getChunksPerShard().entrySet()) {
-                    double pct = cds.getShardPercent(e.getKey());
-                    String rowStyle = pct >= 75 ? " style=\"background-color:#ffcccc\"" : pct >= 60 ? " style=\"background-color:#fff3cd\"" : "";
-                    List<String> zones = report.getShardZones().getOrDefault(e.getKey(), java.util.Collections.emptyList());
-                    String status = pct >= 75 ? "CRITICAL" : pct >= 60 ? "WARNING" : "OK";
+                    String shard = e.getKey();
+                    double chunkPct = cds.getShardPercent(shard);
+
+                    ClusterAnalysisReport.NamespaceShardEntry shardData = nsData != null ? nsData.get(shard) : null;
+                    long shardDocs = shardData != null ? shardData.documentCount : 0;
+                    long shardStorage = shardData != null ? shardData.storageSize : 0;
+                    double docPct = totalDocs > 0 ? shardDocs * 100.0 / totalDocs : 0;
+                    double storagePct = totalStorage > 0 ? shardStorage * 100.0 / totalStorage : 0;
+
+                    double worstPct = Math.max(chunkPct, Math.max(docPct, storagePct));
+                    String status;
+                    if (worstPct >= 75 || "CRITICAL".equals(dataSeverity)) status = "CRITICAL";
+                    else if (worstPct >= 60 || "WARNING".equals(dataSeverity)) status = "WARNING";
+                    else status = "OK";
+                    String rowStyle = "CRITICAL".equals(status) ? " style=\"background-color:#ffcccc\"" :
+                                     "WARNING".equals(status) ? " style=\"background-color:#fff3cd\"" : "";
+
+                    List<String> zones = report.getShardZones().getOrDefault(shard, java.util.Collections.emptyList());
                     writer.println("                <tr" + rowStyle + ">");
-                    writer.println("                    <td>" + (first ? escapeHtml(cds.getNamespace()) : "") + "</td>");
-                    writer.println("                    <td>" + escapeHtml(e.getKey()) + "</td>");
+                    writer.println("                    <td>" + (first ? escapeHtml(ns) : "") + "</td>");
+                    writer.println("                    <td>" + escapeHtml(shard) + "</td>");
                     writer.println("                    <td>" + escapeHtml(zones.isEmpty() ? "-" : String.join(",", zones)) + "</td>");
-                    writer.println("                    <td class=\"number\">" + (first ? cds.getTotalChunks() : "") + "</td>");
                     writer.println("                    <td class=\"number\">" + NUMBER_FORMAT.format(e.getValue()) + "</td>");
-                    writer.println("                    <td class=\"number\">" + String.format("%.1f%%", pct) + "</td>");
+                    writer.println("                    <td class=\"number\">" + String.format("%.1f%%", chunkPct) + "</td>");
+                    writer.println("                    <td class=\"number\">" + NUMBER_FORMAT.format(shardDocs) + "</td>");
+                    writer.println("                    <td class=\"number\">" + String.format("%.1f%%", docPct) + "</td>");
+                    writer.println("                    <td class=\"number\">" + formatBytes(shardStorage) + "</td>");
+                    writer.println("                    <td class=\"number\">" + String.format("%.1f%%", storagePct) + "</td>");
                     writer.println("                    <td>" + (first && cds.isHasJumboChunks() ? "YES" : first ? "no" : "") + "</td>");
                     writer.println("                    <td>" + status + "</td>");
                     writer.println("                </tr>");
