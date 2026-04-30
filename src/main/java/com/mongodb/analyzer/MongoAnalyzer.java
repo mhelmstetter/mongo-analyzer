@@ -111,6 +111,17 @@ public class MongoAnalyzer implements Callable<Integer> {
             }
         }
 
+        // Filter chunk distribution to only the databases being analyzed
+        chunkDistribution = chunkDistribution.stream().filter(cds -> {
+            String ns = cds.getNamespace();
+            int dot = ns.indexOf('.');
+            if (dot <= 0) return false;
+            String db = ns.substring(0, dot);
+            if (excludeDbSet.contains(db)) return false;
+            if (databaseName != null && !databaseName.equals(db)) return false;
+            return true;
+        }).collect(java.util.stream.Collectors.toList());
+
         List<HostAnalysisResult> allHostResults = new ArrayList<>();
 
         for (ShardInfo shard : shards) {
