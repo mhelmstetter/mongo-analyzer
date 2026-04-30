@@ -75,7 +75,7 @@ public class DatabaseAnalyzer {
         List<String> collections = new ArrayList<>();
         
         for (String collection : allCollections) {
-            if (!collection.startsWith("system.")) {
+            if (!collection.startsWith("system.") && !collection.startsWith("replset.")) {
                 collections.add(collection);
             }
         }
