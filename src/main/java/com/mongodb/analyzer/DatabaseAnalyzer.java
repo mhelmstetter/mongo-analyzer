@@ -75,7 +75,9 @@ public class DatabaseAnalyzer {
         List<String> collections = new ArrayList<>();
         
         for (String collection : allCollections) {
-            collections.add(collection);
+            if (!collection.startsWith("system.")) {
+                collections.add(collection);
+            }
         }
         
         // Apply include filter
