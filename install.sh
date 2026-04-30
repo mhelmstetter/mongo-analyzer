@@ -8,7 +8,7 @@ set -e  # Exit on any error
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 INSTALL_DIR="$HOME/.local/bin"
 SCRIPT_NAME="mongo-analyzer"
-JAR_NAME="mongo-analyzer-1.0-SNAPSHOT.jar"
+JAR_NAME="mongo-analyzer.jar"
 
 # Colors for output
 RED='\033[0;31m'
@@ -53,12 +53,12 @@ fi
 print_color $GREEN "✓ Java version found"
 
 # Build the project if JAR doesn't exist
-if [ ! -f "$SCRIPT_DIR/target/$JAR_NAME" ]; then
+if [ ! -f "$SCRIPT_DIR/bin/$JAR_NAME" ]; then
     print_color $YELLOW "JAR file not found. Building project..."
     cd "$SCRIPT_DIR"
     mvn clean package
-    if [ ! -f "$SCRIPT_DIR/target/$JAR_NAME" ]; then
-        print_color $RED "Error: Build failed or JAR file not found at $SCRIPT_DIR/target/$JAR_NAME"
+    if [ ! -f "$SCRIPT_DIR/bin/$JAR_NAME" ]; then
+        print_color $RED "Error: Build failed or JAR file not found at $SCRIPT_DIR/bin/$JAR_NAME"
         exit 1
     fi
 fi
@@ -74,7 +74,7 @@ fi
 mkdir -p "$INSTALL_DIR"
 
 # Get absolute path to JAR (no copying - use directly from source)
-JAR_ABS_PATH="$SCRIPT_DIR/target/$JAR_NAME"
+JAR_ABS_PATH="$SCRIPT_DIR/bin/$JAR_NAME"
 
 # Create wrapper script that points to the current directory's JAR
 print_color $BLUE "Creating wrapper script with path: $JAR_ABS_PATH"

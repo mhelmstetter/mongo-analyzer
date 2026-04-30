@@ -49,12 +49,12 @@ Java CLI that deep-analyzes MongoDB deployments by connecting directly to every 
 mvn clean package
 ```
 
-Produces a shaded JAR at `target/mongo-analyzer-1.0-SNAPSHOT.jar`.
+Produces a self-contained uber JAR at `bin/mongo-analyzer.jar`.
 
 ## Usage
 
 ```bash
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar [OPTIONS]
+java -jar bin/mongo-analyzer.jar [OPTIONS]
 ```
 
 ### Options
@@ -74,25 +74,25 @@ java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar [OPTIONS]
 
 ```bash
 # Analyze a local standalone or replica set (all databases, table output)
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar
+java -jar bin/mongo-analyzer.jar
 
 # Connect to a sharded cluster via mongos and generate an HTML report
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar \
+java -jar bin/mongo-analyzer.jar \
   -c "mongodb://mongos-host:27017" -o html
 
 # Atlas cluster — full HTML report for all databases
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar \
+java -jar bin/mongo-analyzer.jar \
   -c "mongodb+srv://user:pass@cluster.mongodb.net/" -o html
 
 # Analyze one database with table output
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar -d mydb
+java -jar bin/mongo-analyzer.jar -d mydb
 
 # JSON output for all databases, excluding system DBs
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar \
+java -jar bin/mongo-analyzer.jar \
   -o json --exclude-databases "admin,config,local"
 
 # Only collection stats for specific collections
-java -jar target/mongo-analyzer-1.0-SNAPSHOT.jar \
+java -jar bin/mongo-analyzer.jar \
   -d mydb --include-collections "orders,users" --stats-only
 ```
 
