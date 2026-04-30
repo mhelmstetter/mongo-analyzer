@@ -228,78 +228,82 @@ public class DatabaseAnalyzer {
         return 0.0;
     }
     
-    private List<IndexStats> getIndexStats(MongoCollection<Document> collection) {
+    private List<IndexStats> getIndexStats(MongoCollection<Document> collection, Map<String, Long> precomputedIndexSizes) {
         List<IndexStats> indexStatsList = new ArrayList<>();
-        
+
         try {
-            // Get index definitions from listIndexes
             Map<String, Document> indexDefinitions = new HashMap<>();
             for (Document indexDef : collection.listIndexes()) {
-                String indexName = indexDef.getString("name");
-                indexDefinitions.put(indexName, indexDef);
+                indexDefinitions.put(indexDef.getString("name"), indexDef);
             }
-            
-            // Get index usage statistics from $indexStats
+
             List<Document> indexStatsResult = collection.aggregate(
                 Arrays.asList(new Document("$indexStats", new Document()))
             ).into(new ArrayList<>());
-            
+
+            // Resolve index sizes: use precomputed if available, otherwise fetch once via collStats
+            Map<String, Long> indexSizes = precomputedIndexSizes;
+            if ((indexSizes == null || indexSizes.isEmpty()) && !indexStatsResult.isEmpty()) {
+                try {
+                    Document collStatsCmd = new Document("collStats", collection.getNamespace().getCollectionName())
+                            .append("indexDetails", true);
+                    Document collStatsDoc = database.runCommand(collStatsCmd);
+                    Document iSizes = collStatsDoc.get("indexSizes", Document.class);
+                    if (iSizes != null) {
+                        indexSizes = new HashMap<>();
+                        for (String k : iSizes.keySet()) {
+                            indexSizes.put(k, getLongValue(iSizes, k));
+                        }
+                    }
+                } catch (Exception e) {
+                    // index size not critical
+                }
+            }
+
             for (Document indexDoc : indexStatsResult) {
                 IndexStats indexStats = new IndexStats();
                 indexStats.setNamespace(collection.getNamespace().getFullName());
-                
+
                 String indexName = indexDoc.getString("name");
                 indexStats.setIndexName(indexName);
-                
+
                 Document key = indexDoc.get("key", Document.class);
                 indexStats.setIndexKey(key != null ? key.toJson() : "{}");
-                
+
                 Document accesses = indexDoc.get("accesses", Document.class);
                 if (accesses != null) {
                     indexStats.setOps(getLongValue(accesses, "ops"));
                     indexStats.setSince(accesses.getDate("since"));
                 }
-                
-                // Get additional metadata from index definition
+
                 Document indexDef = indexDefinitions.get(indexName);
                 if (indexDef != null) {
                     indexStats.setUnique(indexDef.getBoolean("unique", false));
                     indexStats.setSparse(indexDef.getBoolean("sparse", false));
                     indexStats.setPartial(indexDef.containsKey("partialFilterExpression"));
                     indexStats.setTtl(indexDef.containsKey("expireAfterSeconds"));
-                    
+
                     if (indexDef.containsKey("expireAfterSeconds")) {
                         Object ttlValue = indexDef.get("expireAfterSeconds");
                         if (ttlValue instanceof Number) {
                             indexStats.setTtlSeconds(((Number) ttlValue).longValue());
                         }
                     }
-                    
-                    // Get index size from stats
-                    try {
-                        Document collStatsCmd = new Document("collStats", collection.getNamespace().getCollectionName())
-                                .append("indexDetails", true);
-                        Document collStats = database.runCommand(collStatsCmd);
-                        
-                        if (collStats.containsKey("indexSizes")) {
-                            Document indexSizes = collStats.get("indexSizes", Document.class);
-                            if (indexSizes.containsKey(indexName)) {
-                                indexStats.setIndexSize(getLongValue(indexSizes, indexName));
-                            }
-                        }
-                    } catch (Exception e) {
-                        // Ignore - index size not critical
-                    }
                 }
-                
+
+                if (indexSizes != null) {
+                    Long sz = indexSizes.get(indexName);
+                    if (sz != null) indexStats.setIndexSize(sz);
+                }
+
                 indexStatsList.add(indexStats);
             }
-            
+
         } catch (Exception e) {
-            logger.warn("Failed to get index stats for collection {}: {}", 
+            logger.warn("Failed to get index stats for collection {}: {}",
                        collection.getNamespace().getCollectionName(), e.getMessage());
         }
-        
+
         return indexStatsList;
     }
     
@@ -322,7 +326,7 @@ public class DatabaseAnalyzer {
                 result.addCollectionStats(collStats);
 
                 if (includeIndexStats) {
-                    List<IndexStats> indexStatsList = getIndexStats(collection);
+                    List<IndexStats> indexStatsList = getIndexStats(collection, null);
                     result.addIndexStats(indexStatsList);
                 }
             } catch (Exception e) {
@@ -333,11 +337,39 @@ public class DatabaseAnalyzer {
         return result;
     }
 
+    /**
+     * Analyzes a database using pre-fetched collection stats from $_internalAllCollectionStats.
+     * Skips per-collection collStats calls; still runs listIndexes + $indexStats per collection.
+     */
+    public AnalysisResult analyzeWithBulkStats(List<CollectionStats> precomputed, boolean includeIndexStats) {
+        AnalysisResult result = new AnalysisResult();
+        result.setDatabaseName(database.getName());
+
+        logger.debug("Direct host (bulk): {} collections in {}", precomputed.size(), database.getName());
+
+        for (CollectionStats cs : precomputed) {
+            result.addCollectionStats(cs);
+
+            if (includeIndexStats) {
+                String collName = cs.getNamespace().substring(cs.getNamespace().indexOf('.') + 1);
+                try {
+                    MongoCollection<Document> collection = database.getCollection(collName);
+                    List<IndexStats> idxStats = getIndexStats(collection, cs.getIndexSizes());
+                    result.addIndexStats(idxStats);
+                } catch (Exception e) {
+                    logger.warn("Failed to get index stats for {}: {}", cs.getNamespace(), e.getMessage());
+                }
+            }
+        }
+
+        return result;
+    }
+
     private List<IndexStats> getIndexStatsFromAllMembers(MongoCollection<Document> collection) {
         List<IndexStats> allIndexStats = new ArrayList<>();
         
         // Get index stats from primary (current connection)
-        List<IndexStats> primaryStats = getIndexStats(collection);
+        List<IndexStats> primaryStats = getIndexStats(collection, null);
         for (IndexStats stats : primaryStats) {
             stats.setReplicaSetMember("primary");
             stats.addMemberOps("primary", stats.getOps());

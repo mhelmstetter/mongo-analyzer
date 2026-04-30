@@ -25,6 +25,9 @@ public class CollectionStats {
     private long bytesCurrentlyInCache;
     private long pagesReadIntoCache;
     private long pagesWrittenFromCache;
+
+    // Per-index sizes, populated from $_internalAllCollectionStats or collStats with indexDetails
+    private Map<String, Long> indexSizes = new LinkedHashMap<>();
     
     public String getNamespace() {
         return namespace;
@@ -156,6 +159,9 @@ public class CollectionStats {
 
     public long getPagesWrittenFromCache() { return pagesWrittenFromCache; }
     public void setPagesWrittenFromCache(long v) { this.pagesWrittenFromCache = v; }
+
+    public Map<String, Long> getIndexSizes() { return indexSizes; }
+    public void setIndexSizes(Map<String, Long> indexSizes) { this.indexSizes = indexSizes; }
 
     public boolean hasWiredTigerStats() {
         return bytesReadIntoCache > 0 || bytesWrittenFromCache > 0;

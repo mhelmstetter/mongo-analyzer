@@ -144,14 +144,25 @@ public class MongoAnalyzer implements Callable<Integer> {
 
                     logger.debug("Analyzing {} databases on host {}", databases.size(), host);
 
+                    // Fetch all collection stats for this host in one command
                     final MongoClient client = directClient;
+                    Map<String, List<CollectionStats>> bulkStats = getAllCollectionStats(client, null);
+
                     for (String dbName : databases) {
                         try {
                             MongoDatabase db = client.getDatabase(dbName);
                             DatabaseAnalyzer analyzer = new DatabaseAnalyzer(db);
 
-                            AnalysisResult dbResult = analyzer.analyzeDirectConnection(
-                                includeCollections, excludeCollections, !statsOnly);
+                            AnalysisResult dbResult;
+                            List<CollectionStats> precomputed = filterCollectionStats(
+                                bulkStats.getOrDefault(dbName, new ArrayList<>()));
+                            if (!precomputed.isEmpty()) {
+                                dbResult = analyzer.analyzeWithBulkStats(
+                                    precomputed, !statsOnly);
+                            } else {
+                                dbResult = analyzer.analyzeDirectConnection(
+                                    includeCollections, excludeCollections, !statsOnly);
+                            }
                             dbResult.setDatabaseStats(analyzer.getDatabaseStats());
 
                             hostResult.addDatabaseResult(dbResult);
@@ -505,6 +516,12 @@ public class MongoAnalyzer implements Callable<Integer> {
             String ns = doc.getString("ns");
             if (ns == null) continue;
 
+            int dot = ns.indexOf('.');
+            if (dot > 0) {
+                String collName = ns.substring(dot + 1);
+                if (collName.startsWith("system.") || collName.startsWith("replset.")) continue;
+            }
+
             String shard = doc.getString("shard");
             String shardKey = shard != null ? shard : "default";
 
@@ -546,12 +563,14 @@ public class MongoAnalyzer implements Callable<Integer> {
         long totalStorageSize = 0;
         long totalFreeStorageSize = 0;
         long totalNumOrphanDocs = 0;
+        long totalIndexSize = 0;
         double avgObjSize = 0;
+        int nindexes = 0;
         boolean capped = false;
         long maxSize = 0;
+        boolean wtParsed = false;
+        Map<String, Long> indexSizesMap = new LinkedHashMap<>();
 
-        // Use config.collections as the authoritative source for sharded collections
-        // Only truly sharded collections appear in config.collections
         boolean isSharded = shardedCollectionNamespaces.contains(ns);
 
         for (Map.Entry<String, Document> shardEntry : shardDocs.entrySet()) {
@@ -572,13 +591,15 @@ public class MongoAnalyzer implements Callable<Integer> {
             totalStorageSize += storageSize;
             totalFreeStorageSize += freeStorageSize;
             totalNumOrphanDocs += numOrphanDocs;
+            totalIndexSize += getLongValue(storageStats, "totalIndexSize");
 
-            // Take avgObjSize from first shard (or calculate weighted average)
             if (avgObjSize == 0) {
                 avgObjSize = getDoubleValue(storageStats, "avgObjSize");
             }
+            if (nindexes == 0) {
+                nindexes = getLongValue(storageStats, "nindexes").intValue();
+            }
 
-            // Capped collection info
             if (storageStats.containsKey("capped")) {
                 capped = storageStats.getBoolean("capped", false);
             }
@@ -586,7 +607,29 @@ public class MongoAnalyzer implements Callable<Integer> {
                 maxSize = getLongValue(storageStats, "maxSize");
             }
 
-            // Create shard stats for sharded collections
+            // WiredTiger cache and per-index sizes: meaningful only on direct mongod connections
+            // (only one shard entry in that case), so take from first entry
+            if (!wtParsed) {
+                Document wt = storageStats.get("wiredTiger", Document.class);
+                if (wt != null) {
+                    Document cache = wt.get("cache", Document.class);
+                    if (cache != null) {
+                        stats.setBytesReadIntoCache(getLongValue(cache, "bytes read into cache"));
+                        stats.setBytesWrittenFromCache(getLongValue(cache, "bytes written from cache"));
+                        stats.setBytesCurrentlyInCache(getLongValue(cache, "bytes currently in the cache"));
+                        stats.setPagesReadIntoCache(getLongValue(cache, "pages read into cache"));
+                        stats.setPagesWrittenFromCache(getLongValue(cache, "pages written from cache"));
+                        wtParsed = true;
+                    }
+                }
+                Document iSizes = storageStats.get("indexSizes", Document.class);
+                if (iSizes != null) {
+                    for (String idxName : iSizes.keySet()) {
+                        indexSizesMap.put(idxName, getLongValue(iSizes, idxName));
+                    }
+                }
+            }
+
             if (isSharded && !"default".equals(shardName)) {
                 ShardStats shardStats = new ShardStats();
                 shardStats.setShardName(shardName);
@@ -607,10 +650,9 @@ public class MongoAnalyzer implements Callable<Integer> {
         stats.setMaxSize(maxSize);
         stats.setSharded(isSharded);
         stats.setShardCount(isSharded ? shardDocs.size() : 0);
-
-        // Note: indexes and totalIndexSize not available from $_internalAllCollectionStats
-        stats.setIndexes(0);
-        stats.setTotalIndexSize(0L);
+        stats.setIndexes(nindexes);
+        stats.setTotalIndexSize(totalIndexSize);
+        stats.setIndexSizes(indexSizesMap);
 
         return stats;
     }
