@@ -945,29 +945,34 @@ public class HtmlOutputFormatter implements OutputFormatter {
         }
         writer.println("                </tbody></table></div>");
 
-        // Per-shard, per-host collection and index detail
-        writer.println("        <h2>Per-Host Collection &amp; Index Detail</h2>");
+        // Per-shard, per-host index detail (primaries only; collapsed by default)
+        writer.println("        <h2>Per-Host Index Detail (Primaries)</h2>");
+        writer.println("        <p style=\"color:#5d6c74;font-size:0.9em\">Collection storage is shown in the Namespace Distribution table above. Click a shard to expand index stats.</p>");
         String currentShard = null;
         for (HostAnalysisResult hostResult : report.getHostResults()) {
+            if (!"PRIMARY".equals(hostResult.getRole())) continue;
+
             if (!hostResult.getShardName().equals(currentShard)) {
+                if (currentShard != null) {
+                    writer.println("        </details>");
+                }
                 currentShard = hostResult.getShardName();
-                writer.println("        <h3>Shard: " + escapeHtml(currentShard) + "</h3>");
+                writer.println("        <details>");
+                writer.println("            <summary><strong>Shard: " + escapeHtml(currentShard) + "</strong></summary>");
             }
-            writer.println("        <h4>" + escapeHtml(hostResult.getHostName()) + " <span style=\"color:#00684A\">(" + escapeHtml(hostResult.getRole()) + ")</span></h4>");
+
+            writer.println("        <h4 style=\"margin-left:1em\">" + escapeHtml(hostResult.getHostName()) + "</h4>");
 
             for (AnalysisResult dbResult : hostResult.getDatabaseResults()) {
-                List<CollectionStats> collStats = dbResult.getCollectionStats();
                 List<IndexStats> idxStats = dbResult.getIndexStats();
-                if (collStats.isEmpty() && idxStats.isEmpty()) continue;
+                if (idxStats.isEmpty()) continue;
 
-                writer.println("        <h5 style=\"color:#5d6c74\">Database: " + escapeHtml(dbResult.getDatabaseName()) + "</h5>");
-                if (!collStats.isEmpty()) {
-                    writeCollectionStatsTable(writer, collStats, new HashMap<>());
-                }
-                if (!idxStats.isEmpty()) {
-                    writeIndexStatsTable(writer, idxStats);
-                }
+                writer.println("        <h5 style=\"color:#5d6c74;margin-left:1em\">Database: " + escapeHtml(dbResult.getDatabaseName()) + "</h5>");
+                writeIndexStatsTable(writer, idxStats);
             }
+        }
+        if (currentShard != null) {
+            writer.println("        </details>");
         }
 
         writeHtmlFooter(writer);
