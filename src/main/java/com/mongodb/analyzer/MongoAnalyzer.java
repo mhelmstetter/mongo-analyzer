@@ -144,9 +144,9 @@ public class MongoAnalyzer implements Callable<Integer> {
 
                     logger.debug("Analyzing {} databases on host {}", databases.size(), host);
 
-                    // Fetch all collection stats for this host in one command
+                    // Fetch collection stats for this host in one command (filtered to requested db if specified)
                     final MongoClient client = directClient;
-                    Map<String, List<CollectionStats>> bulkStats = getAllCollectionStats(client, null);
+                    Map<String, List<CollectionStats>> bulkStats = getAllCollectionStats(client, databaseName);
 
                     for (String dbName : databases) {
                         try {
