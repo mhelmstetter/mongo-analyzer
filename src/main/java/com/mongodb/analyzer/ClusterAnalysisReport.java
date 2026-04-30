@@ -24,6 +24,7 @@ public class ClusterAnalysisReport {
     private List<DataImbalanceEntry> dataImbalances = new ArrayList<>();
     private List<ChunkImbalanceEntry> chunkImbalances = new ArrayList<>();
     private List<ActivityImbalanceEntry> activityImbalances = new ArrayList<>();
+    private List<CacheImbalanceEntry> cacheImbalances = new ArrayList<>();
 
     private static final double WARNING_THRESHOLD = 60.0;
     private static final double CRITICAL_THRESHOLD = 75.0;
@@ -53,6 +54,7 @@ public class ClusterAnalysisReport {
     public List<DataImbalanceEntry> getDataImbalances() { return dataImbalances; }
     public List<ChunkImbalanceEntry> getChunkImbalances() { return chunkImbalances; }
     public List<ActivityImbalanceEntry> getActivityImbalances() { return activityImbalances; }
+    public List<CacheImbalanceEntry> getCacheImbalances() { return cacheImbalances; }
 
     public long getTotalShards() {
         return hostResults.stream().map(HostAnalysisResult::getShardName).distinct().count();
@@ -100,6 +102,7 @@ public class ClusterAnalysisReport {
         computeDataImbalances();
         computeChunkImbalances();
         computeActivityImbalances();
+        computeCacheImbalances();
     }
 
     private void buildNamespaceDistribution() {
@@ -274,6 +277,80 @@ public class ClusterAnalysisReport {
         activityImbalances.sort((a, b) -> Double.compare(b.totalOps, a.totalOps));
     }
 
+    private void computeCacheImbalances() {
+        cacheImbalances.clear();
+
+        for (Map.Entry<String, Map<String, NamespaceShardEntry>> entry : namespaceDistribution.entrySet()) {
+            String ns = entry.getKey();
+            Map<String, NamespaceShardEntry> shardEntries = entry.getValue();
+            if (shardEntries.size() <= 1) continue;
+
+            // Check both cache reads and cache writes
+            long totalReads = shardEntries.values().stream().mapToLong(e -> e.bytesReadIntoCache).sum();
+            long totalWrites = shardEntries.values().stream().mapToLong(e -> e.bytesWrittenFromCache).sum();
+
+            if (totalReads == 0 && totalWrites == 0) continue;
+
+            List<String> nsZones = collectionZones.getOrDefault(ns, Collections.emptyList());
+            Map<String, List<String>> zoneGroups = groupShardsByZone(new ArrayList<>(shardEntries.keySet()), nsZones);
+
+            for (Map.Entry<String, List<String>> zg : zoneGroups.entrySet()) {
+                String zoneName = zg.getKey();
+                List<String> shardsInZone = zg.getValue();
+                if (shardsInZone.size() <= 1) continue;
+
+                long zoneReads = shardsInZone.stream()
+                    .mapToLong(s -> shardEntries.containsKey(s) ? shardEntries.get(s).bytesReadIntoCache : 0L).sum();
+                long zoneWrites = shardsInZone.stream()
+                    .mapToLong(s -> shardEntries.containsKey(s) ? shardEntries.get(s).bytesWrittenFromCache : 0L).sum();
+
+                double maxReadPct = 0, maxWritePct = 0;
+                String maxReadShard = null, maxWriteShard = null;
+                long maxReadVal = 0, maxWriteVal = 0;
+
+                if (zoneReads > 0) {
+                    maxReadShard = shardsInZone.stream()
+                        .max(Comparator.comparingLong(s -> shardEntries.containsKey(s) ? shardEntries.get(s).bytesReadIntoCache : 0L))
+                        .orElse(null);
+                    if (maxReadShard != null) {
+                        maxReadVal = shardEntries.get(maxReadShard).bytesReadIntoCache;
+                        maxReadPct = maxReadVal * 100.0 / zoneReads;
+                    }
+                }
+                if (zoneWrites > 0) {
+                    maxWriteShard = shardsInZone.stream()
+                        .max(Comparator.comparingLong(s -> shardEntries.containsKey(s) ? shardEntries.get(s).bytesWrittenFromCache : 0L))
+                        .orElse(null);
+                    if (maxWriteShard != null) {
+                        maxWriteVal = shardEntries.get(maxWriteShard).bytesWrittenFromCache;
+                        maxWritePct = maxWriteVal * 100.0 / zoneWrites;
+                    }
+                }
+
+                double maxPct = Math.max(maxReadPct, maxWritePct);
+                if (maxPct >= WARNING_THRESHOLD) {
+                    CacheImbalanceEntry e = new CacheImbalanceEntry();
+                    e.namespace = ns;
+                    e.zoneGroup = zoneName;
+                    e.maxReadShard = maxReadShard;
+                    e.maxReadPercent = maxReadPct;
+                    e.totalBytesRead = zoneReads;
+                    e.maxBytesRead = maxReadVal;
+                    e.maxWriteShard = maxWriteShard;
+                    e.maxWritePercent = maxWritePct;
+                    e.totalBytesWritten = zoneWrites;
+                    e.maxBytesWritten = maxWriteVal;
+                    e.isCritical = maxPct >= CRITICAL_THRESHOLD;
+                    cacheImbalances.add(e);
+                }
+            }
+        }
+
+        cacheImbalances.sort((a, b) -> Double.compare(
+            Math.max(b.maxReadPercent, b.maxWritePercent),
+            Math.max(a.maxReadPercent, a.maxWritePercent)));
+    }
+
     // Groups shards by zone: shards in same zone go in same group.
     // If no zones configured for this collection, all shards go in "all" group.
     private Map<String, List<String>> groupShardsByZone(List<String> shards, List<String> nsZones) {
@@ -373,6 +450,22 @@ public class ClusterAnalysisReport {
         public long maxChunks;
         public boolean isCritical;
         public Map<String, Long> chunksPerShard = new TreeMap<>();
+
+        public String getSeverity() { return isCritical ? "CRITICAL" : "WARNING"; }
+    }
+
+    public static class CacheImbalanceEntry {
+        public String namespace;
+        public String zoneGroup;
+        public String maxReadShard;
+        public double maxReadPercent;
+        public long totalBytesRead;
+        public long maxBytesRead;
+        public String maxWriteShard;
+        public double maxWritePercent;
+        public long totalBytesWritten;
+        public long maxBytesWritten;
+        public boolean isCritical;
 
         public String getSeverity() { return isCritical ? "CRITICAL" : "WARNING"; }
     }

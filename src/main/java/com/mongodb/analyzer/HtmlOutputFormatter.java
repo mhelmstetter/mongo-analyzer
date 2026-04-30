@@ -14,8 +14,9 @@ import java.util.Map;
 import java.util.Set;
 
 public class HtmlOutputFormatter implements OutputFormatter {
-    
+
     private static final NumberFormat NUMBER_FORMAT = NumberFormat.getNumberInstance(Locale.US);
+    private int tableSeq = 0; // incremented for every table rendered to guarantee unique IDs
     
     @Override
     public void format(AnalysisResult result) {
@@ -144,6 +145,8 @@ public class HtmlOutputFormatter implements OutputFormatter {
     }
     
     private void writeCollectionStatsTable(PrintWriter writer, List<CollectionStats> stats, Map<String, String> primaryShardMap) {
+        final String tId = "collStatsTable_" + (++tableSeq);
+        final String fId = "collStatsFilter_" + tableSeq;
         writer.println("        <h2 id=\"collection-stats\">Collection Statistics</h2>");
 
         // Summary
@@ -199,26 +202,26 @@ public class HtmlOutputFormatter implements OutputFormatter {
         
         writer.println("        <div class=\"table-container\">");
         writer.println("            <div class=\"controls\">");
-        writer.println("                <input type=\"text\" id=\"collStatsFilter\" class=\"filter-input\" placeholder=\"Filter by collection name...\">");
-        writer.println("                <button class=\"clear-btn\" onclick=\"clearFilter('collStatsFilter', 'collStatsTable')\">Clear Filter</button>");
+        writer.println("                <input type=\"text\" id=\"" + fId + "\" class=\"filter-input\" placeholder=\"Filter by collection name...\">");
+        writer.println("                <button class=\"clear-btn\" onclick=\"clearFilter('" + fId + "', '" + tId + "')\">Clear Filter</button>");
         writer.println("            </div>");
         boolean hasWt = stats.stream().anyMatch(CollectionStats::hasWiredTigerStats);
-        writer.println("            <table id=\"collStatsTable\">");
+        writer.println("            <table id=\"" + tId + "\">");
         writer.println("                <thead>");
         writer.println("                    <tr>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 0, 'string')\">Collection</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 1, 'number')\">Documents</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 2, 'number')\">Data Size</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 3, 'number')\">Storage Size</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 4, 'number')\">Avg Doc Size</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 5, 'number')\">Indexes</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 6, 'number')\">Index Size</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 7, 'string')\">Sharded</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 0, 'string')\">Collection</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 1, 'number')\">Documents</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 2, 'number')\">Data Size</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 3, 'number')\">Storage Size</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 4, 'number')\">Avg Doc Size</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 5, 'number')\">Indexes</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 6, 'number')\">Index Size</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 7, 'string')\">Sharded</th>");
         if (hasWt) {
-            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 8, 'number')\">Cache Reads</th>");
-            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 9, 'number')\">Cache Writes</th>");
-            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 10, 'number')\">Pages Read</th>");
-            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('collStatsTable', 11, 'number')\">Pages Written</th>");
+            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 8, 'number')\">Cache Reads</th>");
+            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 9, 'number')\">Cache Writes</th>");
+            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 10, 'number')\">Pages Read</th>");
+            writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 11, 'number')\">Pages Written</th>");
         }
         writer.println("                    </tr>");
         writer.println("                </thead>");
@@ -260,6 +263,8 @@ public class HtmlOutputFormatter implements OutputFormatter {
     }
 
     private void writeShardStatsTable(PrintWriter writer, List<CollectionStats> shardedCollections) {
+        final String tId = "shardStatsTable_" + (++tableSeq);
+        final String fId = "shardStatsFilter_" + tableSeq;
         writer.println("        <h2 id=\"shard-stats\">Shard Distribution</h2>");
 
         // Calculate summary stats - count unique shard names
@@ -315,18 +320,18 @@ public class HtmlOutputFormatter implements OutputFormatter {
 
         writer.println("        <div class=\"table-container\">");
         writer.println("            <div class=\"controls\">");
-        writer.println("                <input type=\"text\" id=\"shardStatsFilter\" class=\"filter-input\" placeholder=\"Filter by collection or shard name...\">");
-        writer.println("                <button class=\"clear-btn\" onclick=\"clearFilter('shardStatsFilter', 'shardStatsTable')\">Clear Filter</button>");
+        writer.println("                <input type=\"text\" id=\"" + fId + "\" class=\"filter-input\" placeholder=\"Filter by collection or shard name...\">");
+        writer.println("                <button class=\"clear-btn\" onclick=\"clearFilter('" + fId + "', '" + tId + "')\">Clear Filter</button>");
         writer.println("            </div>");
-        writer.println("            <table id=\"shardStatsTable\">");
+        writer.println("            <table id=\"" + tId + "\">");
         writer.println("                <thead>");
         writer.println("                    <tr>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('shardStatsTable', 0, 'string')\">Namespace</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('shardStatsTable', 1, 'string')\">Shard</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('shardStatsTable', 2, 'number')\">Documents</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('shardStatsTable', 3, 'number')\">Size</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('shardStatsTable', 4, 'number')\">Storage</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('shardStatsTable', 5, 'number')\">% Docs</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 0, 'string')\">Namespace</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 1, 'string')\">Shard</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 2, 'number')\">Documents</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 3, 'number')\">Size</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 4, 'number')\">Storage</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 5, 'number')\">% Docs</th>");
         writer.println("                        <th>Size Distribution</th>");
         writer.println("                    </tr>");
         writer.println("                </thead>");
@@ -387,6 +392,8 @@ public class HtmlOutputFormatter implements OutputFormatter {
     }
 
     private void writeIndexStatsTable(PrintWriter writer, List<IndexStats> stats) {
+        final String tId = "indexStatsTable_" + (++tableSeq);
+        final String fId = "indexStatsFilter_" + tableSeq;
         writer.println("        <h2 id=\"index-stats\">Index Usage Statistics (Replica Set Aggregated)</h2>");
         
         // Summary
@@ -440,21 +447,21 @@ public class HtmlOutputFormatter implements OutputFormatter {
         
         writer.println("        <div class=\"table-container\">");
         writer.println("            <div class=\"controls\">");
-        writer.println("                <input type=\"text\" id=\"indexStatsFilter\" class=\"filter-input\" placeholder=\"Filter by collection or index name...\">");
-        writer.println("                <button class=\"clear-btn\" onclick=\"clearFilter('indexStatsFilter', 'indexStatsTable')\">Clear Filter</button>");
+        writer.println("                <input type=\"text\" id=\"" + fId + "\" class=\"filter-input\" placeholder=\"Filter by collection or index name...\">");
+        writer.println("                <button class=\"clear-btn\" onclick=\"clearFilter('" + fId + "', '" + tId + "')\">Clear Filter</button>");
         writer.println("            </div>");
-        writer.println("            <table id=\"indexStatsTable\">");
+        writer.println("            <table id=\"" + tId + "\">");
         writer.println("                <thead>");
         writer.println("                    <tr>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 0, 'string')\">Collection</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 1, 'string')\">Index Name</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 2, 'string')\">Index Key</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 3, 'string')\">Type</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 4, 'number')\">Size</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 5, 'number')\">Total Ops</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 6, 'string')\">Member Breakdown</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 7, 'string')\">TTL</th>");
-        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('indexStatsTable', 8, 'string')\">Since</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 0, 'string')\">Collection</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 1, 'string')\">Index Name</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 2, 'string')\">Index Key</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 3, 'string')\">Type</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 4, 'number')\">Size</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 5, 'number')\">Total Ops</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 6, 'string')\">Member Breakdown</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 7, 'string')\">TTL</th>");
+        writer.println("                        <th class=\"sortable\" onclick=\"sortTable('" + tId + "', 8, 'string')\">Since</th>");
         writer.println("                    </tr>");
         writer.println("                </thead>");
         writer.println("                <tbody>");
